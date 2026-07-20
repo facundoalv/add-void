@@ -1,0 +1,16 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "redirect",
+      "redirect": {
+        "extensionPath": "/mocks/empty.js"
+      }
+    },
+    "condition": {
+      "regexFilter": "doubleclick\\.net|googlesyndication\\.com|google-analytics\\.com|adservice\\.google\\.com|youtube\\.com/yts/jsbin",
+      "resourceTypes": ["script", "xmlhttprequest", "sub_frame", "image", "stylesheet"]
+    }
+  }
+]
