@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AddVoid Popup</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Consolas, Monaco, monospace;
+      }
+
+      body {
+        margin: 0;
+        width: 320px;
+        background: #05070b;
+        color: #d8f3dc;
+        padding: 14px;
+        box-sizing: border-box;
+      }
+
+      .panel {
+        border: 1px solid #2a9d8f;
+        border-radius: 10px;
+        padding: 12px;
+        background: linear-gradient(135deg, #07110d, #0d1722);
+        box-shadow: 0 0 12px rgba(42, 157, 143, 0.25);
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 18px;
+        color: #7ef7b5;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        background: #1f3d2d;
+        color: #7ef7b5;
+        margin-bottom: 8px;
+      }
+
+      .status {
+        margin: 10px 0;
+        padding: 8px;
+        border-radius: 6px;
+        background: rgba(255,255,255,0.05);
+      }
+
+      .row {
+        display: flex;
+        justify-content: space-between;
+        margin: 6px 0;
+        font-size: 13px;
+      }
+
+      .toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 10px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255,255,255,0.12);
+      }
+
+      .switch {
+        position: relative;
+        width: 44px;
+        height: 24px;
+        display: inline-block;
+      }
+
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .slider {
+        position: absolute;
+        inset: 0;
+        cursor: pointer;
+        background: #444;
+        border-radius: 999px;
+        transition: 0.2s;
+      }
+
+      .slider::before {
+        content: "";
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        left: 3px;
+        top: 3px;
+        background: white;
+        border-radius: 50%;
+        transition: 0.2s;
+      }
+
+      input:checked + .slider {
+        background: #2a9d8f;
+      }
+
+      input:checked + .slider::before {
+        transform: translateX(20px);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <h1>AddVoid v1.0.0</h1>
+      <div class="badge">MAIN_WORLD active</div>
+      <div class="status" id="envStatus">Initializing environment…</div>
+      <div class="row"><span>Mocks 200 OK</span><strong id="mocksCount">0</strong></div>
+      <div class="row"><span>Payloads sanitized</span><strong id="payloadsCount">0</strong></div>
+      <div class="row"><span>CSS rules hidden</span><strong id="cssCount">0</strong></div>
+      <div class="toggle">
+        <span>Extension state</span>
+        <label class="switch">
+          <input id="toggleState" type="checkbox" checked />
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>
