@@ -1,0 +1,6 @@
+_metadata/
+
+# Archivos del sistema y del entorno de desarrollo
+.DS_Store
+Thumbs.db
+.vscode/

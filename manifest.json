@@ -2,52 +2,47 @@
   "manifest_version": 3,
   "name": "AddVoid",
   "version": "1.0.0",
-  "description": "Manifest V3 ad-privacy extension with MAIN world shielding and declarative network redirection.",
+  "description": "Stealth adblocker with object shadowing in MAIN world and immutable cosmetic hiding.",
   "permissions": [
-    "storage",
-    "tabs",
-    "activeTab",
     "declarativeNetRequest",
-    "scripting",
-    "webNavigation"
+    "declarativeNetRequestFeedback",
+    "activeTab",
+    "scripting"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
-  },
-  "action": {
-    "default_title": "AddVoid",
-    "default_popup": "popup.html"
+    "service_worker": "background.js"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["inject.js"],
-      "run_at": "document_start",
-      "world": "MAIN"
-    },
-    {
-      "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
   "declarative_net_request": {
     "rule_resources": [
       {
-        "id": "void_ruleset",
+        "id": "ruleset_1",
         "enabled": true,
         "path": "ruleset.json"
       }
     ]
   },
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "addvoid@example.com",
-      "strict_min_version": "120.0"
+  "web_accessible_resources": [
+    {
+      "resources": ["inject.js"],
+      "matches": ["<all_urls>"]
     }
-  }
+  ]
 }
