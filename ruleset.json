@@ -4,13 +4,35 @@
     "priority": 1,
     "action": {
       "type": "redirect",
-      "redirect": {
-        "extensionPath": "/mocks/empty.js"
-      }
+      "redirect": { "url": "data:application/javascript;base64,/*Void*/" }
     },
     "condition": {
-      "regexFilter": "doubleclick\\.net|googlesyndication\\.com|google-analytics\\.com|adservice\\.google\\.com|youtube\\.com/yts/jsbin",
-      "resourceTypes": ["script", "xmlhttprequest", "sub_frame", "image", "stylesheet"]
+      "urlFilter": "google-analytics.com/analytics.js",
+      "resourceTypes": ["script"]
+    }
+  },
+  {
+    "id": 2,
+    "priority": 1,
+    "action": {
+      "type": "redirect",
+      "redirect": { "url": "data:application/json;base64,e30=" }
+    },
+    "condition": {
+      "urlFilter": "/youtubei/v1/player/ad_break",
+      "resourceTypes": ["xmlhttprequest"]
+    }
+  },
+  {
+    "id": 3,
+    "priority": 1,
+    "action": {
+      "type": "redirect",
+      "redirect": { "url": "data:application/javascript;base64,Y29uc29sZS5sb2coJ0FkZFZvaWQgTW9jaycpOw==" }
+    },
+    "condition": {
+      "urlFilter": "doubleclick.net/gampad/ads",
+      "resourceTypes": ["script", "xmlhttprequest"]
     }
   }
 ]
