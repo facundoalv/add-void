@@ -1,139 +1,103 @@
-(function () {
-// [+] Inicialización y Estado Global
-// Detecta si corre en Chrome o Firefox y crea el almacén en memoria para los contadores de cada pestaña.
-    const runtime = globalThis.browser?.runtime || globalThis.chrome?.runtime;
-  const tabsApi = globalThis.browser?.tabs || globalThis.chrome?.tabs;
+// Almacén en memoria de estadísticas agrupadas por pestaña (tabId)
+const tabStats = {};
 
-  const state = {
-    activeTabId: null,
-    tabs: {}
-  };
-// [+] Gestion y Estrucutra de Pestañas
-// Asegura que una pestaña tenga su estructura inicializada con los valores por defecto
-  function ensureTabEntry(tabId) {
-    if (!state.tabs[tabId]) {
-      state.tabs[tabId] = {
-        enabled: true,
-        environment: {
-          mainWorldActive: true,
-          fetchMasked: true,
-          xhrMasked: true
-        },
-        counters: {
-          mocks: 0,
-          payloads: 0,
-          cssRules: 0
-        },
-        lastEvent: null,
-        lastUpdated: Date.now()
-      };
-    }
-    return state.tabs[tabId];
-  }
-
-// Devuelve una copia limpia (snapshot) de los datos de la pestaña solicitada.
-  function snapshotForTab(tabId) {
-    const entry = ensureTabEntry(tabId);
-    return {
-      tabId,
-      enabled: entry.enabled,
-      environment: entry.environment,
-      counters: entry.counters,
-      lastEvent: entry.lastEvent,
-      lastUpdated: entry.lastUpdated
+// Obtener o inicializar estructura de stats para un tabId
+function getOrCreateStats(tabId) {
+  if (!tabStats[tabId]) {
+    tabStats[tabId] = {
+      mocksBlocked: 0,
+      payloadsSanitized: 0,
+      cosmeticRulesApplied: 0,
+      environmentStatus: 'SECURE_MAIN_WORLD',
+      isEnabled: true,
+      logs: []
     };
   }
+  return tabStats[tabId];
+}
 
-// Permite actualizar parcialmente el estado de una pestaña de forma segura.
-  function updateEntry(tabId, patch) {
-    const entry = ensureTabEntry(tabId);
-    Object.assign(entry, patch);
-    entry.lastUpdated = Date.now();
-    return snapshotForTab(tabId);
+// Agregar log con límite de tamaño para evitar sobrecarga de memoria
+function addLog(tabId, type, message, source) {
+  const stats = getOrCreateStats(tabId);
+  const logEntry = {
+    id: Math.random().toString(36).substring(2, 9),
+    timestamp: new Date().toLocaleTimeString(),
+    type: type,
+    message: message,
+    source: source
+  };
+  stats.logs.unshift(logEntry);
+  if (stats.logs.length > 50) {
+    stats.logs.pop();
+  }
+  
+  // Opcional: Enviar broadcast si el Popup está abierto escuchando
+  chrome.runtime.sendMessage({
+    type: 'LIVE_LOG',
+    tabId: tabId,
+    log: logEntry,
+    stats: stats
+  }).catch(() => {
+    // Silenciar error esperado cuando el Popup está cerrado
+  });
+}
+
+// Escucha de conexiones y mensajes de content_scripts o popup
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  const tabId = sender.tab ? sender.tab.id : request.tabId;
+  
+  if (!tabId) {
+    if (request.type === 'GET_CURRENT_STATS') {
+      sendResponse({ error: 'Tab no identificado' });
+    }
+    return true;
   }
 
-// [+] Procesamiento de Señales 
-// Escucha los eventos del script inyectado y actualiza los contadores según la acción realizada en la web.
-  function handleSignal(message, sender) {
-    const tabId = sender?.tab?.id ?? state.activeTabId ?? 0;
-    const entry = ensureTabEntry(tabId);
-    // Al arrancar, verifica si el MAIN_WORLD y el enmascaramiento de fetch/XHR están activos.
-    if (message?.detail?.type === 'boot') {
-      entry.environment = {
-        mainWorldActive: Boolean(message.detail.mainWorldActive),
-        fetchMasked: Boolean(message.detail.fetchMasked),
-        xhrMasked: Boolean(message.detail.xhrMasked)
-      };
-      entry.lastEvent = message.detail;
-      entry.lastUpdated = Date.now();
-      return snapshotForTab(tabId);
-    }
-    // Suma 1 si se desvió una petición con éxito usando un script señuelo (falso 200 OK).
-    if (message?.detail?.type === 'mock') {
-      entry.counters.mocks += 1;
-      entry.lastEvent = message.detail;
-      entry.lastUpdated = Date.now();
-      return snapshotForTab(tabId);
-    }
-    // Suma 1 si se interceptó y sanitizó un payload JSON (por ejemplo, removiendo bloques de anuncios).
-    if (message?.detail?.type === 'sanitized') {
-      entry.counters.payloads += 1;
-      entry.lastEvent = message.detail;
-      entry.lastUpdated = Date.now();
-      return snapshotForTab(tabId);
-    }
-    // Suma 1 si se inyectó una regla estética inmutable para ocultar un banner.
-    if (message?.detail?.type === 'css') {
-      entry.counters.cssRules += 1;
-      entry.lastEvent = message.detail;
-      entry.lastUpdated = Date.now();
-      return snapshotForTab(tabId);
-    }
+  const stats = getOrCreateStats(tabId);
 
-    return snapshotForTab(tabId);
+  switch (request.type) {
+    case 'COSMETIC_APPLIED':
+      stats.cosmeticRulesApplied = request.count;
+      addLog(tabId, 'cosmetic', `Aplicadas ${request.count} reglas cosméticas inmutables.`, 'content.js');
+      break;
+
+    case 'LOG_EVENT':
+      addLog(tabId, request.logType, request.message, request.source);
+      break;
+
+    case 'METRIC_UPDATE':
+      const metric = request.metric;
+      if (metric.type === 'network_blocked') {
+        stats.mocksBlocked++;
+        addLog(tabId, 'network_blocked', `Petición desviada con éxito: ${metric.url.substring(0, 50)}... (${metric.requestType} simulado)`, 'inject.js');
+      } else if (metric.type === 'payload_sanitized') {
+        stats.payloadsSanitized++;
+        addLog(tabId, 'payload_sanitized', `Sanitizado payload JSON eliminando nodo: "${metric.key}"`, 'inject.js');
+      } else if (metric.type === 'evasion') {
+        addLog(tabId, 'evasion', `Object Shadowing ejecutado de forma transparente para ${metric.api}.${metric.method}`, 'inject.js');
+      }
+      break;
+
+    case 'GET_CURRENT_STATS':
+      sendResponse({ stats: stats, logs: stats.logs });
+      break;
+
+    case 'TOGGLE_STATUS':
+      stats.isEnabled = request.enabled;
+      addLog(tabId, 'info', `Extensión configurada como ${stats.isEnabled ? 'ACTIVA' : 'INACTIVA'} para esta pestaña.`, 'background.js');
+      sendResponse({ stats: stats });
+      break;
+
+    default:
+      break;
   }
-// [+] Control del Ciclo de Vida del Navegador
-// Registra qué pestaña está viendo el usuario en tiempo real.
-  tabsApi?.onActivated?.addListener(({ tabId }) => {
-    state.activeTabId = tabId;
-  });
-// Limpieza de memoria: borra los datos acumulados de la pestaña cuando el usuario la cierra.
-  tabsApi?.onRemoved?.addListener((tabId) => {
-    delete state.tabs[tabId];
-  });
-// Resetea el registro de pestaña activa al instalar o actualizar la extensión.
-  runtime?.onInstalled?.addListener(() => {
-    state.activeTabId = null;
-  });
-// [+] Enrutador Central de Mensajes (API de Comunicación)
-// Atiende todas las peticiones asincrónicas que cruzan los límites de los entornos aislados.
-  runtime?.onMessage?.addListener((message, sender, sendResponse) => {
-    if (!message || typeof message !== 'object') {
-      return false;
-    }
-    // Caso A: Llega una señal de bloqueo desde la página -> Actualiza contadores.
-    if (message.type === 'signal') {
-      const snapshot = handleSignal(message, sender);
-      sendResponse(snapshot);
-      return true;
-    }
-    // Caso B: El Popup se abre y pregunta -> Le devuelve los contadores actuales.
-    if (message.type === 'queryState') {
-      const tabId = message.tabId ?? state.activeTabId ?? 0;
-      sendResponse(snapshotForTab(tabId));
-      return true;
-    }
-    // Caso C: El usuario toca el botón On/Off del Popup -> Modifica el estado global.
-    if (message.type === 'toggle') {
-      const tabId = message.tabId ?? state.activeTabId ?? 0;
-      const entry = ensureTabEntry(tabId);
-      entry.enabled = Boolean(message.enabled);
-      entry.lastEvent = { type: 'toggle', enabled: entry.enabled };
-      entry.lastUpdated = Date.now();
-      sendResponse(snapshotForTab(tabId));
-      return true;
-    }
 
-    return false; // Mensaje no reconocido
-  });
-})();
+  return true;
+});
+
+// Limpieza de estadísticas de pestañas cerradas para evitar fugas de memoria
+chrome.tabs.onRemoved.addListener((tabId) => {
+  delete tabStats[tabId];
+});
+
+console.log('[AddVoid] Service Worker listo y escuchando eventos.');
