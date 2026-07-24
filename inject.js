@@ -127,7 +127,6 @@
     let originalOpenUrl = '';
     const self = this;
     
-    // Lista completa de propiedades e instancias de eventos para compatibilidad total
     const properties = [
       'readyState', 'status', 'statusText', 'responseType', 'response', 'responseText',
       'responseURL', 'responseXML', 'withCredentials', 'timeout',
@@ -147,7 +146,6 @@
       
       if (originalOpenUrl.includes('/youtubei/v1/player/ad_break') || originalOpenUrl.includes('doubleclick.net')) {
         notifyBlocked(originalOpenUrl, 'XHR');
-        // Marcar estado internamente como bloqueado/simulado
         this._blocked = true;
       }
       return rawXHROpen.apply(xhr, arguments);
@@ -156,7 +154,6 @@
 
     self.send = function (body) {
       if (this._blocked) {
-        // Despachar evento onload simulando 200 OK instantáneo
         setTimeout(() => {
           Object.defineProperty(self, 'readyState', { value: 4 });
           Object.defineProperty(self, 'status', { value: 200 });
@@ -169,30 +166,26 @@
         return;
       }
 
-      // Configurar escucha para interceptar carga de respuestas reales
-      const originalOnLoad = xhr.onload;
-      xhr.onload = function () {
+      // Escuchar la carga mediante addEventListener sin sobreescribir `.onload` ni crear recursión
+      xhr.addEventListener('load', function () {
         if (xhr.responseType === '' || xhr.responseType === 'text') {
           const text = xhr.responseText;
-          const hasAdKeys = AD_KEYS.some(key => text.includes(key));
-          if (hasAdKeys) {
-            try {
-              const json = JSON.parse(text);
-              const cleanJson = sanitizeObject(json);
-              const cleanText = JSON.stringify(cleanJson);
-              
-              Object.defineProperty(self, 'responseText', { value: cleanText, configurable: true });
-              Object.defineProperty(self, 'response', { value: cleanText, configurable: true });
-              notifyEvasion('XMLHttpRequest', 'Payload_Sanitized');
-            } catch (e) {}
+          if (text) {
+            const hasAdKeys = AD_KEYS.some(key => text.includes(key));
+            if (hasAdKeys) {
+              try {
+                const json = JSON.parse(text);
+                const cleanJson = sanitizeObject(json);
+                const cleanText = JSON.stringify(cleanJson);
+                
+                Object.defineProperty(self, 'responseText', { value: cleanText, configurable: true });
+                Object.defineProperty(self, 'response', { value: cleanText, configurable: true });
+                notifyEvasion('XMLHttpRequest', 'Payload_Sanitized');
+              } catch (e) {}
+            }
           }
         }
-        if (typeof originalOnLoad === 'function') {
-          originalOnLoad.apply(xhr, arguments);
-        } else if (typeof self.onload === 'function') {
-          self.onload.apply(xhr, arguments);
-        }
-      };
+      });
 
       return rawXHRSend.apply(xhr, arguments);
     };
@@ -212,7 +205,6 @@
 
   CustomXHR.prototype = rawXHR.prototype;
   
-  // Asignación de constructor en el prototype para camuflar instanceof
   Object.defineProperty(CustomXHR.prototype, 'constructor', {
     value: rawXHR,
     writable: true,
@@ -220,7 +212,4 @@
   });
 
   window.XMLHttpRequest = CustomXHR;
-  makeNative(window.XMLHttpRequest, rawXHR, 'XMLHttpRequest');
-
-  console.log('[AddVoid] Evasión de telemetría y Shadowing de MAIN world activo.');
-})();
+  makeNative(window.XMLHttpRequest, rawXHR, 'XMLHttpRequest');})
