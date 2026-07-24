@@ -1,52 +1,85 @@
 (function () {
   'use strict';
 
-  // Configuración de palabras clave para sanitizar payloads JSON de anuncios
-  const AD_KEYS = ['adPlacements', 'playerAds', 'adSlots', 'companionAds', 'adBreak'];
+  // Configuración ampliada de claves de anuncios en YouTube
+  const AD_KEYS = [
+    'adPlacements',
+    'playerAds',
+    'adSlots',
+    'companionAds',
+    'adBreak',
+    'adBreakHeartbeatParams',
+    'adLayoutLoggingData'
+  ];
 
-  // Función de sanitización recursiva de objetos JSON
+  // Sanitización quirúrgica de objetos JSON para YouTube
   function sanitizeObject(obj) {
     if (!obj || typeof obj !== 'object') return obj;
+
     if (Array.isArray(obj)) {
-      return obj.map(item => sanitizeObject(item));
+      return obj
+        .map(item => sanitizeObject(item))
+        .filter(item => item !== null && item !== undefined);
     }
+
     const sanitized = {};
     for (const [key, value] of Object.entries(obj)) {
-      if (AD_KEYS.some(k => key.toLowerCase().includes(k.toLowerCase()))) {
-        // Enviar notificación de sanitización
-        notifySanitized(key, JSON.stringify(value).substring(0, 80));
-        continue; // Excluir propiedad con anuncios
+      if (AD_KEYS.some(k => key.toLowerCase() === k.toLowerCase())) {
+        notifySanitized(key, 'Sanitized_Ad_Key');
+        if (key === 'adPlacements' || key === 'playerAds' || key === 'adSlots') {
+          sanitized[key] = [];
+        }
+        continue;
       }
       sanitized[key] = sanitizeObject(value);
     }
     return sanitized;
   }
 
-  // Utilidad de notificación mediante CustomEvent seguro hacia el Isolated World (content.js)
+  // Intercepción y sanitización de la variable global de YouTube al cargar la página
+  function sanitizeGlobalPlayerResponse() {
+    if (window.ytInitialPlayerResponse) {
+      if (window.ytInitialPlayerResponse.adPlacements) {
+        window.ytInitialPlayerResponse.adPlacements = [];
+      }
+      if (window.ytInitialPlayerResponse.playerAds) {
+        window.ytInitialPlayerResponse.playerAds = [];
+      }
+    }
+  }
+
+  sanitizeGlobalPlayerResponse();
+  Object.defineProperty(window, 'ytInitialPlayerResponse', {
+    get() {
+      return this._ytInitialPlayerResponse;
+    },
+    set(val) {
+      this._ytInitialPlayerResponse = sanitizeObject(val);
+    },
+    configurable: true
+  });
+
+  // Funciones auxiliares de notificación hacia content.js
   function notifyBlocked(url, type) {
-    const event = new CustomEvent('AddVoid_Event', {
+    window.dispatchEvent(new CustomEvent('AddVoid_Event', {
       detail: { type: 'network_blocked', url: url, requestType: type }
-    });
-    window.dispatchEvent(event);
+    }));
   }
 
   function notifySanitized(key, snippet) {
-    const event = new CustomEvent('AddVoid_Event', {
+    window.dispatchEvent(new CustomEvent('AddVoid_Event', {
       detail: { type: 'payload_sanitized', key: key, snippet: snippet }
-    });
-    window.dispatchEvent(event);
+    }));
   }
 
   function notifyEvasion(api, method) {
-    const event = new CustomEvent('AddVoid_Event', {
+    window.dispatchEvent(new CustomEvent('AddVoid_Event', {
       detail: { type: 'evasion', api: api, method: method }
-    });
-    window.dispatchEvent(event);
+    }));
   }
 
   // Helper para camuflar funciones interceptadas
   function makeNative(fn, originalFn, name) {
-    // Redefinición segura de toString para engañar verificaciones reflexivas
     Object.defineProperty(fn, 'name', { value: name, configurable: true });
     
     const nativeToString = Function.prototype.toString;
@@ -64,21 +97,23 @@
       configurable: true
     });
 
-    // Replicar propiedades de prototipo originales si existen
     if (originalFn.prototype) {
       fn.prototype = originalFn.prototype;
     }
   }
 
-  // --- PILAR 2: Intercepción y Object Shadowing de Fetch ---
+  // --- PILAR 1: Intercepción y Object Shadowing de Fetch ---
   const rawFetch = window.fetch;
   window.fetch = async function (input, init) {
     const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : '');
-    
-    // Simular bloqueo/redirección de endpoints de anuncios conocidos
-    if (url.includes('/youtubei/v1/player/ad_break') || url.includes('doubleclick.net') || url.includes('google-analytics.com')) {
+
+    if (
+      url.includes('/youtubei/v1/player/ad_break') ||
+      url.includes('doubleclick.net') ||
+      url.includes('google-analytics.com') ||
+      url.includes('/api/stats/ads')
+    ) {
       notifyBlocked(url, 'Fetch');
-      // Devolver mock response 200 OK limpio
       return new Response(JSON.stringify({}), {
         status: 200,
         statusText: 'OK',
@@ -88,27 +123,24 @@
 
     try {
       const response = await rawFetch.apply(this, arguments);
-      const contentType = response.headers.get('content-type') || '';
 
-      if (contentType.includes('application/json')) {
-        // Clonar para procesar sin corromper la lectura original si falla
+      if (url.includes('/youtubei/v1/player') || url.includes('/youtubei/v1/next')) {
         const clone = response.clone();
         try {
           const json = await clone.json();
-          const hasAdKeys = AD_KEYS.some(key => JSON.stringify(json).includes(key));
-          if (hasAdKeys) {
-            const cleanJson = sanitizeObject(json);
-            notifyEvasion('fetch', 'JSON_Sanitizer');
-            return new Response(JSON.stringify(cleanJson), {
-              status: response.status,
-              statusText: response.statusText,
-              headers: response.headers
-            });
-          }
+          const cleanJson = sanitizeObject(json);
+          notifyEvasion('fetch', 'YouTube_Player_Sanitized');
+
+          return new Response(JSON.stringify(cleanJson), {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers
+          });
         } catch (e) {
-          // Ignorar error de análisis JSON y continuar con respuesta original
+          return response;
         }
       }
+
       return response;
     } catch (err) {
       throw err;
@@ -123,11 +155,9 @@
 
   function CustomXHR() {
     const xhr = new rawXHR();
-
     let originalOpenUrl = '';
     const self = this;
-    
-    // Lista completa de propiedades e instancias de eventos para compatibilidad total
+
     const properties = [
       'readyState', 'status', 'statusText', 'responseType', 'response', 'responseText',
       'responseURL', 'responseXML', 'withCredentials', 'timeout',
@@ -144,10 +174,13 @@
 
     self.open = function (method, url) {
       originalOpenUrl = typeof url === 'string' ? url : url.toString();
-      
-      if (originalOpenUrl.includes('/youtubei/v1/player/ad_break') || originalOpenUrl.includes('doubleclick.net')) {
+
+      if (
+        originalOpenUrl.includes('/youtubei/v1/player/ad_break') ||
+        originalOpenUrl.includes('doubleclick.net') ||
+        originalOpenUrl.includes('/api/stats/ads')
+      ) {
         notifyBlocked(originalOpenUrl, 'XHR');
-        // Marcar estado internamente como bloqueado/simulado
         this._blocked = true;
       }
       return rawXHROpen.apply(xhr, arguments);
@@ -156,7 +189,6 @@
 
     self.send = function (body) {
       if (this._blocked) {
-        // Despachar evento onload simulando 200 OK instantáneo
         setTimeout(() => {
           Object.defineProperty(self, 'readyState', { value: 4 });
           Object.defineProperty(self, 'status', { value: 200 });
@@ -169,36 +201,29 @@
         return;
       }
 
-      // Configurar escucha para interceptar carga de respuestas reales
-      const originalOnLoad = xhr.onload;
-      xhr.onload = function () {
-        if (xhr.responseType === '' || xhr.responseType === 'text') {
-          const text = xhr.responseText;
-          const hasAdKeys = AD_KEYS.some(key => text.includes(key));
-          if (hasAdKeys) {
-            try {
-              const json = JSON.parse(text);
-              const cleanJson = sanitizeObject(json);
-              const cleanText = JSON.stringify(cleanJson);
-              
-              Object.defineProperty(self, 'responseText', { value: cleanText, configurable: true });
-              Object.defineProperty(self, 'response', { value: cleanText, configurable: true });
-              notifyEvasion('XMLHttpRequest', 'Payload_Sanitized');
-            } catch (e) {}
+      xhr.addEventListener('load', function () {
+        if (originalOpenUrl.includes('/youtubei/v1/player') || originalOpenUrl.includes('/youtubei/v1/next')) {
+          if (xhr.responseType === '' || xhr.responseType === 'text') {
+            const text = xhr.responseText;
+            if (text) {
+              try {
+                const json = JSON.parse(text);
+                const cleanJson = sanitizeObject(json);
+                const cleanText = JSON.stringify(cleanJson);
+
+                Object.defineProperty(self, 'responseText', { value: cleanText, configurable: true });
+                Object.defineProperty(self, 'response', { value: cleanText, configurable: true });
+                notifyEvasion('XMLHttpRequest', 'YouTube_XHR_Sanitized');
+              } catch (e) {}
+            }
           }
         }
-        if (typeof originalOnLoad === 'function') {
-          originalOnLoad.apply(xhr, arguments);
-        } else if (typeof self.onload === 'function') {
-          self.onload.apply(xhr, arguments);
-        }
-      };
+      });
 
       return rawXHRSend.apply(xhr, arguments);
     };
     makeNative(self.send, rawXHRSend, 'send');
 
-    // Copiar resto de métodos nativos
     self.setRequestHeader = function() { return xhr.setRequestHeader.apply(xhr, arguments); };
     self.getResponseHeader = function() { return xhr.getResponseHeader.apply(xhr, arguments); };
     self.getAllResponseHeaders = function() { return xhr.getAllResponseHeaders.apply(xhr, arguments); };
@@ -211,8 +236,7 @@
   }
 
   CustomXHR.prototype = rawXHR.prototype;
-  
-  // Asignación de constructor en el prototype para camuflar instanceof
+
   Object.defineProperty(CustomXHR.prototype, 'constructor', {
     value: rawXHR,
     writable: true,
@@ -221,6 +245,4 @@
 
   window.XMLHttpRequest = CustomXHR;
   makeNative(window.XMLHttpRequest, rawXHR, 'XMLHttpRequest');
-
-  console.log('[AddVoid] Evasión de telemetría y Shadowing de MAIN world activo.');
 })();
