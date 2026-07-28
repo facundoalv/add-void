@@ -117,4 +117,38 @@
   } else {
     injectCosmeticCSS();
   }
+
+  // Detección y salto relámpago de anuncios en el DOM de YouTube
+function observeYouTubeAds() {
+  const observer = new MutationObserver(() => {
+    const moviePlayer = document.querySelector('#movie_player');
+    const video = document.querySelector('video');
+
+    if (moviePlayer && video) {
+      const isAd = moviePlayer.classList.contains('ad-showing') || 
+                   moviePlayer.classList.contains('ad-interrupting');
+
+      if (isAd) {
+        // Silenciar y saltear instantáneamente
+        video.muted = true;
+        if (isFinite(video.duration) && video.duration > 0) {
+          video.currentTime = video.duration;
+        }
+
+        // Clic automático al botón de omitir
+        const skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button');
+        if (skipBtn) {
+          skipBtn.click();
+        }
+      }
+    }
+  });
+
+  const targetNode = document.body;
+  if (targetNode) {
+    observer.observe(targetNode, { childList: true, subtree: true });
+  }
+}
+
+observeYouTubeAds();
 })();
