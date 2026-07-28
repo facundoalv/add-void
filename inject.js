@@ -246,17 +246,15 @@
   window.XMLHttpRequest = CustomXHR;
   makeNative(window.XMLHttpRequest, rawXHR, 'XMLHttpRequest');
   
-  // Escuchar la navegación SPA interna de YouTube para limpiar el payload
-  document.addEventListener('yt-navigate-finish', function () {
+// Escuchar múltiples eventos de navegación SPA interna de YouTube
+  const cleanSPA = function () {
     if (window.ytInitialPlayerResponse) {
-      if (window.ytInitialPlayerResponse.adPlacements) {
-        window.ytInitialPlayerResponse.adPlacements = [];
-      }
-      if (window.ytInitialPlayerResponse.playerAds) {
-        window.ytInitialPlayerResponse.playerAds = [];
-      }
+      window.ytInitialPlayerResponse = sanitizeObject(window.ytInitialPlayerResponse);
     }
-  });
+  };
+
+  document.addEventListener('yt-navigate-finish', cleanSPA);
+  document.addEventListener('yt-page-data-updated', cleanSPA);
 
   
 
