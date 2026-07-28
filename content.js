@@ -118,29 +118,37 @@
     injectCosmeticCSS();
   }
 
-  // Detección y salto relámpago de anuncios en el DOM de YouTube
+// Detección y salto ultra-rápido en content.js
 function observeYouTubeAds() {
   const observer = new MutationObserver(() => {
-    const moviePlayer = document.querySelector('#movie_player');
     const video = document.querySelector('video');
+    const moviePlayer = document.querySelector('#movie_player');
 
-    if (moviePlayer && video) {
-      const isAd = moviePlayer.classList.contains('ad-showing') || 
-                   moviePlayer.classList.contains('ad-interrupting');
+    if (!video || !moviePlayer) return;
 
-      if (isAd) {
-        // Silenciar y saltear instantáneamente
-        video.muted = true;
-        if (isFinite(video.duration) && video.duration > 0) {
-          video.currentTime = video.duration;
-        }
+    // Detectar si el reproductor está en modo anuncio por clase o por presencia de badges de ad
+    const isAdShowing = 
+      moviePlayer.classList.contains('ad-showing') || 
+      moviePlayer.classList.contains('ad-interrupting') ||
+      document.querySelector('.ytp-ad-text, .ytp-ad-preview-text, .ytp-ad-simple-ad-badge');
 
-        // Clic automático al botón de omitir
-        const skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button');
-        if (skipBtn) {
-          skipBtn.click();
-        }
+    if (isAdShowing) {
+      // 1. Silenciar audio inmediatamente
+      video.muted = true;
+      
+      // 2. Acelerar el video del anuncio al máximo (16x) y mandar el tiempo al final
+      video.playbackRate = 16.0;
+      if (isFinite(video.duration) && video.duration > 0) {
+        video.currentTime = video.duration;
+      } else {
+        video.currentTime = 9999;
       }
+
+      // 3. Hacer clic en cualquier variante de botón "Omitir" / "Skip"
+      const skipButtons = document.querySelectorAll(
+        '.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .ytp-ad-skip-button-slot, .ytp-ad-skip-button-container'
+      );
+      skipButtons.forEach(btn => btn && btn.click());
     }
   });
 
