@@ -245,4 +245,19 @@
 
   window.XMLHttpRequest = CustomXHR;
   makeNative(window.XMLHttpRequest, rawXHR, 'XMLHttpRequest');
+  
+  // Escuchar la navegación SPA interna de YouTube para limpiar el payload
+  document.addEventListener('yt-navigate-finish', function () {
+    if (window.ytInitialPlayerResponse) {
+      if (window.ytInitialPlayerResponse.adPlacements) {
+        window.ytInitialPlayerResponse.adPlacements = [];
+      }
+      if (window.ytInitialPlayerResponse.playerAds) {
+        window.ytInitialPlayerResponse.playerAds = [];
+      }
+    }
+  });
+
+  
+
 })();
